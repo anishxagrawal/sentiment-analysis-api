@@ -1,0 +1,29 @@
+name: Deploy to Hugging Face Space
+
+on:
+  push:
+    branches:
+      - main     # deploy whenever main branch updates
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v3
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+
+      - name: Add Hugging Face remote (if missing)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git remote add hf https://$HF_TOKEN@huggingface.co/spaces/anishxagrawal/sentiment_analysis_api || echo "HF remote exists"
+
+      - name: Push to HF Space
+        run: |
+          git push hf main --force
