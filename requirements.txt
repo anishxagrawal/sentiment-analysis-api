@@ -1,5 +1,6 @@
 fastapi==0.124.2
 uvicorn[standard]==0.38.0
-transformers==4.57.3
-torch==2.1.0
+transformers==4.44.2
+torch==2.4.1
+numpy<2.0.0
 pydantic==2.12.5
