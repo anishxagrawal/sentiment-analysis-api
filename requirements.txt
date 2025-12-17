@@ -4,3 +4,5 @@ transformers==4.44.2
 torch==2.4.1
 numpy<2.0.0
 pydantic==2.12.5
+redis==5.0.1
+rq==1.15.1

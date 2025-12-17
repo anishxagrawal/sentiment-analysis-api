@@ -1,9 +1,22 @@
 # main.py
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from transformers import pipeline
 from typing import List
+import uuid
+import json
+from redis import Redis
+from rq import Queue
+from jobs import process_batch_job
 
+# Connect to Redis
+try:
+    redis_conn = Redis(host='localhost', port=6379, db=0, decode_responses=True)
+    task_queue = Queue('default', connection=redis_conn)
+    redis_available = True
+except Exception as e:
+    print(f"Redis connection failed: {e}")
+    redis_available = False
 
 # TODO: Create FastAPI app instance
 app = FastAPI()
@@ -69,9 +82,13 @@ def home():
         "endpoints": {
             "docs": "/docs",
             "predict": "/predict",
-            "batch_predict": "/batch-predict",  # Add this line
+            "batch_predict": "/batch-predict",
+            "batch_predict_async": "/batch-predict-async",  # New
+            "job_status": "/job/{job_id}/status",  # New
+            "job_results": "/job/{job_id}/results",  # New
             "stats": "/stats"
-        }
+        },
+        "async_available": redis_available
     }
 
 @app.get("/stats")
@@ -133,3 +150,133 @@ def predict_batch_sentiment(input: BatchTextInput):
         total_processed=total_processed,
         summary=summary
     )
+
+# ==================== ASYNC BATCH ENDPOINTS ====================
+
+class AsyncBatchResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str
+
+@app.post("/batch-predict-async", response_model=AsyncBatchResponse)
+def submit_batch_job_async(input: BatchTextInput):
+    """
+    Submit a batch prediction job for async processing.
+    Returns immediately with a job_id.
+    """
+    if not redis_available:
+        return {
+            "job_id": None,
+            "status": "error",
+            "message": "Redis not available. Use /batch-predict for synchronous processing."
+        }
+    
+    # Generate unique job ID
+    job_id = str(uuid.uuid4())
+    
+    # Initialize job in Redis
+    redis_conn.hset(f"job:{job_id}", mapping={
+        "status": "queued",
+        "total": len(input.texts),
+        "processed": 0,
+        "percent": 0
+    })
+    
+    # Enqueue job for background processing
+    task_queue.enqueue(
+        process_batch_job,
+        job_id,
+        input.texts,
+        redis_conn,
+        job_timeout='10m'  # 10 minute timeout
+    )
+    
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "message": f"Job submitted successfully. Total texts: {len(input.texts)}"
+    }
+
+
+@app.get("/job/{job_id}/status")
+def get_job_status(job_id: str):
+    """
+    Check the status of an async batch job.
+    """
+    if not redis_available:
+        return {"error": "Redis not available"}
+    
+    # Check if job exists
+    if not redis_conn.exists(f"job:{job_id}"):
+        return {"error": "Job not found"}
+    
+    # Get job data
+    job_data = redis_conn.hgetall(f"job:{job_id}")
+    
+    status = job_data.get("status", "unknown")
+    total = int(job_data.get("total", 0))
+    processed = int(job_data.get("processed", 0))
+    percent = int(job_data.get("percent", 0))
+    
+    response = {
+        "job_id": job_id,
+        "status": status,
+        "progress": f"{processed}/{total}",
+        "percent": percent
+    }
+    
+    # If completed, include summary
+    if status == "completed" and "summary" in job_data:
+        response["summary"] = json.loads(job_data["summary"])
+    
+    return response
+
+
+@app.get("/job/{job_id}/results")
+def get_job_results(job_id: str):
+    """
+    Get the results of a completed batch job.
+    """
+    if not redis_available:
+        return {"error": "Redis not available"}
+    
+    # Check if job exists
+    if not redis_conn.exists(f"job:{job_id}"):
+        return {"error": "Job not found"}
+    
+    job_data = redis_conn.hgetall(f"job:{job_id}")
+    status = job_data.get("status")
+    
+    if status != "completed":
+        return {
+            "error": f"Job not completed yet. Current status: {status}",
+            "job_id": job_id,
+            "status": status
+        }
+    
+    # Return results
+    results = json.loads(job_data.get("results", "[]"))
+    summary = json.loads(job_data.get("summary", "{}"))
+    
+    return {
+        "job_id": job_id,
+        "status": "completed",
+        "results": results,
+        "summary": summary,
+        "total_processed": len(results)
+    }
+
+
+@app.delete("/job/{job_id}")
+def delete_job(job_id: str):
+    """
+    Delete a job and its results.
+    """
+    if not redis_available:
+        return {"error": "Redis not available"}
+    
+    if redis_conn.exists(f"job:{job_id}"):
+        redis_conn.delete(f"job:{job_id}")
+        return {"message": f"Job {job_id} deleted successfully"}
+    
+    return {"error": "Job not found"}
