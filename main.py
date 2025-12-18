@@ -198,7 +198,13 @@ def predict_batch_sentiment(input: BatchTextInput):
         prediction = sentiment_classifier(cleaned_text)
         label = prediction[0]["label"]
         confidence = prediction[0]["score"]
-        
+
+        # Determine final sentiment (POSITIVE / NEGATIVE / NEUTRAL)
+        if calibrated_confidence < 0.75 or abs(pos - neg) < 0.2:
+            sentiment = "NEUTRAL"
+        else:
+            sentiment = label
+
         # Add to results
         results.append(
             BatchPredictionResult(
