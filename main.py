@@ -203,8 +203,10 @@ def predict_batch_sentiment(input: BatchTextInput):
         results.append(
             BatchPredictionResult(
                 text=cleaned_text,
-                sentiment=label,
-                confidence=confidence
+                sentiment=sentiment,  # POSITIVE / NEGATIVE / NEUTRAL
+                raw_confidence=round(raw_confidence, 4),
+                calibrated_confidence=calibrated_confidence,
+                confidence_level=confidence_level
             )
         )
         
@@ -222,9 +224,11 @@ def predict_batch_sentiment(input: BatchTextInput):
         "successfully_processed": total_processed,
         "positive_count": sentiments_count.get("POSITIVE", 0),
         "negative_count": sentiments_count.get("NEGATIVE", 0),
-        "average_confidence": round(avg_confidence, 4),
-        "most_common_sentiment": max(sentiments_count, key=sentiments_count.get) if sentiments_count else "NONE"
+        "neutral_count": sentiments_count.get("NEUTRAL", 0),
+        "average_confidence": round(avg_calibrated_confidence, 4),
+        "most_common_sentiment": max(sentiments_count, key=sentiments_count.get)
     }
+
     
     return BatchResponse(
         results=results,
