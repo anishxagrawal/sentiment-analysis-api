@@ -187,7 +187,6 @@ def submit_batch_job_async(input: BatchTextInput):
         process_batch_job,
         job_id,
         input.texts,
-        redis_conn,
         job_timeout='10m'  # 10 minute timeout
     )
     
