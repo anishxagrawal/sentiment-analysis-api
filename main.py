@@ -112,7 +112,15 @@ def predict_sentiment(input: TextInput):
 
     # Get full probability distribution (modern API)
     prediction = sentiment_classifier(text, top_k=None)
-    scores = prediction[0]
+    prediction = sentiment_classifier(text, top_k=None)
+
+    # Normalize HF output shape
+    if isinstance(prediction[0], dict):
+        # HF returned only top label → reconstruct distribution
+        scores = prediction
+    else:
+        # HF returned full distribution
+        scores = prediction[0]
 
     # Extract POSITIVE and NEGATIVE scores
     pos = next(s["score"] for s in scores if s["label"] == "POSITIVE")
@@ -146,8 +154,6 @@ def predict_sentiment(input: TextInput):
         calibrated_confidence=round(calibrated_confidence, 4),
         confidence_level=confidence_level
     )
-
-    
 
 # TODO: Add a welcome endpoint at "/"
 @app.get("/")
