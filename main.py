@@ -107,25 +107,31 @@ def predict_sentiment(input: TextInput):
 
     if len(text) == 0:
         raise HTTPException(status_code=400, detail="Text cannot be empty")
-    
     if len(text) < 3:
         raise HTTPException(status_code=400, detail="Text must be at least 3 characters long")
 
-    # Get prediction
-    prediction = sentiment_classifier(text, return_all_scores=True)
-    
-    # Extract scores
-    scores = prediction[0]  # [{'label': 'NEGATIVE', 'score': 0.001}, {'label': 'POSITIVE', 'score': 0.999}]
-    
-    # Find the predicted label and its score
-    predicted = max(scores, key=lambda x: x['score'])
-    label = predicted['label']
-    raw_confidence = predicted['score']
-    
-    # Calculate calibrated confidence
+    # Get full probability distribution (modern API)
+    prediction = sentiment_classifier(text, top_k=None)
+    scores = prediction[0]
+
+    # Extract POSITIVE and NEGATIVE scores
+    pos = next(s["score"] for s in scores if s["label"] == "POSITIVE")
+    neg = next(s["score"] for s in scores if s["label"] == "NEGATIVE")
+
+    # Raw label and confidence
+    label = "POSITIVE" if pos >= neg else "NEGATIVE"
+    raw_confidence = max(pos, neg)
+
+    # Calibrated confidence
     calibrated_confidence = get_calibrated_confidence(raw_confidence, label)
-    
-    # Determine confidence level
+
+    # Neutral logic
+    if calibrated_confidence < 0.75 or abs(pos - neg) < 0.2:
+        sentiment = "NEUTRAL"
+    else:
+        sentiment = label
+
+    # Confidence level (based on calibrated confidence)
     if calibrated_confidence >= 0.70:
         confidence_level = "high"
     elif calibrated_confidence >= 0.55:
@@ -135,11 +141,13 @@ def predict_sentiment(input: TextInput):
 
     return PredictionResult(
         text=text,
-        sentiment=label,
+        sentiment=sentiment,   # ✅ FIXED
         raw_confidence=round(raw_confidence, 4),
-        calibrated_confidence=calibrated_confidence,
+        calibrated_confidence=round(calibrated_confidence, 4),
         confidence_level=confidence_level
     )
+
+    
 
 # TODO: Add a welcome endpoint at "/"
 @app.get("/")
