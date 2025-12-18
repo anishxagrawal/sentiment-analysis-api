@@ -2,7 +2,7 @@ from redis import Redis
 from transformers import pipeline
 import json
 
-def process_batch_job(job_id: str, texts: List[str], redis_conn):
+def process_batch_job(job_id: str, texts: list[str], redis_conn):
     """
     Background job that processes batch sentiment analysis.
     Updates progress in Redis as it goes.

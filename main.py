@@ -93,6 +93,11 @@ class BatchPredictionResult(BaseModel):
     calibrated_confidence: float
     confidence_level: str
 
+class BatchResponse(BaseModel):
+    results: List[BatchPredictionResult]
+    total_processed: int
+    summary: dict
+
 @app.post("/predict", response_model=PredictionResult)
 def predict_sentiment(input: TextInput):
     global request_count
