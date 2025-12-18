@@ -143,7 +143,13 @@ def predict_batch_sentiment(input: BatchTextInput):
             continue
 
         prediction = sentiment_classifier(cleaned, top_k=None)
-        scores = prediction[0]
+
+        # Normalize HF output
+        if isinstance(prediction[0], dict):
+            scores = prediction
+        else:
+            scores = prediction[0]
+
 
         pos = next(s["score"] for s in scores if s["label"] == "POSITIVE")
         neg = next(s["score"] for s in scores if s["label"] == "NEGATIVE")
